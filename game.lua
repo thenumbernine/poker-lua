@@ -214,7 +214,7 @@ print('checking score of player '..self.players:find(player)..' from cards '..ca
 					for i5=i4+1,#cards do
 						local is = table{i1,i2,i3,i4,i5}
 						local hand = is:map(function(i) return cards[i] end)
-						local score = Game:scoreHand(hand)
+						local score, hand = Game:scoreHand(hand)
 print('considering option '..hand:map(tostring):concat' '..' with score '..tostring(score))
 						if not bestScore or score > bestScore then
 							bestScore = score
@@ -286,23 +286,25 @@ function Game:scoreHand(hand)
 
 	local valuesOfPairs = cardPairs:map(function(pair) return value(pair[1]) end)
 
+	local sortedHand = table():append(cardPairs:unpack())
+
 	-- royal flush / straight flush
-	if flush and straight then return Score(9, valuesOfPairs:unpack()) end	-- can't have a pair so byValue:map(value) == valuesOfPairs
+	if flush and straight then return Score(9, valuesOfPairs:unpack()), sortedHand end	-- can't have a pair so byValue:map(value) == valuesOfPairs
 	-- four of a kind
-	if #cardPairs[1] == 4 then return Score(8, valuesOfPairs:unpack()) end
+	if #cardPairs[1] == 4 then return Score(8, valuesOfPairs:unpack()), sortedHand end
 	-- full house
-	if #cardPairs[1] == 3 and #cardPairs[2] == 2 then return Score(7, valuesOfPairs:unpack()) end
+	if #cardPairs[1] == 3 and #cardPairs[2] == 2 then return Score(7, valuesOfPairs:unpack()), sortedHand end
 	-- flush
-	if flush then return Score(6, valuesOfPairs:unpack()) end	-- can't have a pair so likewise
+	if flush then return Score(6, valuesOfPairs:unpack()), sortedHand end	-- can't have a pair so likewise
 	-- straight
-	if straight then return Score(5, valuesOfPairs:unpack()) end	-- can't have a pair, so same
+	if straight then return Score(5, valuesOfPairs:unpack()), sortedHand end	-- can't have a pair, so same
 	-- three of a kind
-	if #cardPairs[1] == 3 then return Score(4, valuesOfPairs:unpack()) end
+	if #cardPairs[1] == 3 then return Score(4, valuesOfPairs:unpack()), sortedHand end
 	-- two pair
-	if #cardPairs[1] == 2 and #cardPairs[2] == 2 then return Score(3, valuesOfPairs:unpack()) end
+	if #cardPairs[1] == 2 and #cardPairs[2] == 2 then return Score(3, valuesOfPairs:unpack()), sortedHand end
 	-- one pair
-	if #cardPairs[1] == 2 then return Score(2, valuesOfPairs:unpack()) end
+	if #cardPairs[1] == 2 then return Score(2, valuesOfPairs:unpack()), sortedHand end
 	-- high card
-	return Score(1, valuesOfPairs:unpack())
+	return Score(1, valuesOfPairs:unpack()), sortedHand
 end
 return Game
