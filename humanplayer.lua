@@ -2,9 +2,9 @@ local class = require 'ext.class'
 local Player = require 'player'
 local HumanPlayer = class(Player)
 
-function HumanPlayer:callOrRaise(raiseValue, minRaise)
+function HumanPlayer:callOrRaise(currentBid, minRaise)
 	while true do
-		print(raiseValue..' to you')
+		print(currentBid..' to you')
 		io.write('what would you like to do? ([c]all/check), [r]aise, [f]old? ')
 		io.flush()
 
@@ -16,7 +16,7 @@ function HumanPlayer:callOrRaise(raiseValue, minRaise)
 
 		if cmd == 'c' then
 			print'calling...'
-			return raiseValue
+			return currentBid
 		elseif cmd == 'f' then
 			print'folding...'
 			return 'fold'
@@ -30,14 +30,11 @@ function HumanPlayer:callOrRaise(raiseValue, minRaise)
 				amountcmd = io.read'*l'
 			end
 			local amount = tonumber(amountcmd)
-			if amount 
-			and (not minRaise or amount >= minRaise) 
-			and amount <= self.chips
-			then 
-				print('raising to '..amount)
-				return amount 
+			if amount and (amount >= minRaise or amount == self.chips) then 
+				print('raising by '..amount)
+				return currentBid + amount 
 			end
-			print("can't raise to "..amountcmd)
+			print("can't raise by "..amountcmd)
 		else
 			print("I don't understand "..cmd)
 		end

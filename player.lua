@@ -14,24 +14,22 @@ function Player:init(args)
 end
 
 -- simplest AI
--- raiseValue == 0 means you're opening
--- returning 0 means you're checking
--- return 'fold' to fold
--- minRaise is only set when raiseValue == 0, then it is the minimum that you can raise by
--- TODO specify the raise increments
-function Player:callOrRaise(raiseValue, minRaise)
-	if raiseValue == 0 then return minRaise end
+function Player:callOrRaise(currentBid, minRaise)
+	-- opening
+	if currentBid == 0 then return minRaise end	
+
+	-- bad hand - fold
 	if self.predictScore < .2 then return 'fold' end
+	
+	-- good hand - raise
 	if self.predictScore > .7 then 
-		if (minRaise and minRaise or raiseValue) > self.chips then return raiseValue end
-		
 		-- TODO only raise so far based on how good the hand is
 		-- that means keep track of what your best hand is from the probability section
-		if raiseValue > (minRaise or self.game.bigBlind) * 3 then return raiseValue end
-
-		return math.max(minRaise or 0, raiseValue + 10)
+		if currentBid > minRaise * 3 then return currentBid + minRaise end
 	end
-	return raiseValue
+	
+	-- call
+	return currentBid
 end
 
 function Player:name()

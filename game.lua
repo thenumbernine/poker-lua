@@ -144,24 +144,28 @@ print('starting stage '..stage)
 self:print(players)
 
 		for _,player in ipairs(self.players) do
-			player.potAtLastBid = self.pot
+			player.lastBid = 0
 		end
 
 		-- if only 1 player is left then no betting
 		if #players > 1 then
 
-
-			local raiseValue = 0	-- when checking.  this will be overridden for stage==0 when we open.
+			local currentBid = 0	-- when checking.  this will be overridden for stage==0 when we open.
 
 			local lastPlayerToRaise = players[1]
 
 			repeat
 				local player = players[1]
 				
-				local newRaiseValue = player:callOrRaise(raiseValue, raiseValue == 0 and self.openValue or nil)
+				local bid = player:callOrRaise(currentBid, self.openValue)
+				-- can't bid below the current bid
+				if bid ~= 'fold' then bid = math.max(bid, currentBid) end
+					
+				local playerLoss = bid ~= 'fold' and (bid - player.lastBid) or nil
+				player.lastBid = bid
 		
 				-- if the player can't make the bid then make a side-bet
-				if newRaiseValue ~= 'fold' and newRaiseValue >= player.chips then
+				if bid ~= 'fold' and playerLoss >= player.chips then
 
 					-- all my betting is wrong.
 					-- i'm raising to amounts, but subtracting as if i'm raising by amounts. 
@@ -181,13 +185,13 @@ self:print(players)
 					self.pot = 0
 					
 					-- remove the player from further bids
-					newRaiseValue = 'sidebet'
+					bid = 'sidebet'
 				end
 				
-				if newRaiseValue == 'fold' or newRaiseValue == 'sidebet' then
-					if newRaiseValue == 'fold' then
+				if bid == 'fold' or bid == 'sidebet' then
+					if bid == 'fold' then
 						print(player:name()..' folds')
-					elseif newRaiseValue == 'sidebet' then
+					elseif bid == 'sidebet' then
 						print(player:name()..' entered into a sidebet')
 					end
 
@@ -201,14 +205,12 @@ print('all other players are out')
 						break 
 					end
 				else
-					player.chips = player.chips - newRaiseValue
-					self.pot = self.pot + newRaiseValue
+					player.chips = player.chips - playerLoss
+					self.pot = self.pot + playerLoss 
 
-					player.potAtLastBid = self.pot
-
-					local raised = newRaiseValue > raiseValue
-					raiseValue = newRaiseValue
-print(player:name()..' '..(raised and 'raises to '..raiseValue or 'calls'))
+					local raised = bid > currentBid
+					currentBid = bid
+print(player:name()..' '..(raised and 'raises to '..currentBid or 'calls'))
 self:print(players)					
 					
 					if raised then
