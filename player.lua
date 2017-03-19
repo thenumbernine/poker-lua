@@ -21,8 +21,10 @@ end
 -- TODO specify the raise increments
 function Player:callOrRaise(raiseValue, minRaise)
 	if raiseValue == 0 then return minRaise end
+	if raiseValue > self.chips then return 'fold' end
 	if self.predictScore < .2 then return 'fold' end
 	if self.predictScore > .7 then 
+		if minRaise and minRaise > self.chips then return raiseValue end
 		return math.max(minRaise or 0, raiseValue + 10)
 	end
 	return raiseValue
