@@ -6,7 +6,12 @@ function HumanPlayer:callOrRaise(raiseValue, minRaise)
 	while true do
 		print(raiseValue..' to you')
 		print('what would you like to do? [c]all/check, [r]aise, [f]old?')
-		local cmd = io.read'*l':lower():sub(1,1)
+		local cmd = io.read'*l'
+		
+		local parts = cmd:trim():split'%s+'
+		local cmd = parts:remove(1)
+		cmd = cmd:lower():sub(1,1)
+
 		if cmd == 'c' then
 			print'calling...'
 			return raiseValue
@@ -14,21 +19,26 @@ function HumanPlayer:callOrRaise(raiseValue, minRaise)
 			print'folding...'
 			return 'fold'
 		elseif cmd == 'r' then
-			print('raise to how much?'..(minRaise and (' (min raise '..minRaise..')') or ''))
-			io.write'> '
-			io.flush()
-			local amountcmd = io.read'*l'
+			local amountcmd
+			if #parts > 0 then
+				amountcmd = parts:remove(1)
+			else
+				print('raise to how much?'..(minRaise and (' (min raise '..minRaise..')') or ''))
+				io.write'> '
+				io.flush()
+				amountcmd = io.read'*l'
+			end
 			local amount = tonumber(amountcmd)
 			if amount 
-			and (not minRaise or amount > minRaise) 
+			and (not minRaise or amount >= minRaise) 
 			and amount <= self.chips
 			then 
-				print('raising by '..amount)
+				print('raising to '..amount)
 				return amount 
 			end
 			print("can't raise to "..amountcmd)
 		else
-		print("I don't understand "..cmd)
+			print("I don't understand "..cmd)
 		end
 	end
 end

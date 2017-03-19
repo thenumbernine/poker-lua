@@ -24,6 +24,11 @@ function Player:callOrRaise(raiseValue, minRaise)
 	if self.predictScore < .2 then return 'fold' end
 	if self.predictScore > .7 then 
 		if (minRaise and minRaise or raiseValue) > self.chips then return raiseValue end
+		
+		-- TODO only raise so far based on how good the hand is
+		-- that means keep track of what your best hand is from the probability section
+		if raiseValue > (minRaise or self.game.bigBlind) * 3 then return raiseValue end
+
 		return math.max(minRaise or 0, raiseValue + 10)
 	end
 	return raiseValue

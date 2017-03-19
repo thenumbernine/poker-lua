@@ -198,6 +198,9 @@ print'all other players have called'
 				end
 			until #players == 1
 		end	
+	
+		-- if there are no more players and there were no side-bets then we can stop now without flipping over cards
+		if #self.bets == 0 and #players == 1 then break end
 	end
 
 	assert(#players > 0)
@@ -283,7 +286,6 @@ function Game:dealHands(players)
 	end
 end
 
--- TODO merge replaceWildCards with scoreHand and get rid of ReplaceCards
 local ReplaceCard = class(Card)
 
 function ReplaceCard:init(args)
@@ -421,10 +423,7 @@ function Game:scoreBestHand(cards)
 					for i5=i4+1,#cards do
 						local is = table{i1,i2,i3,i4,i5}
 						local hand = is:map(function(i) return cards[i] end)
-						-- TODO hand now has wildcards replaced.  keep track of the original cards somewhere?
-						hand = self:replaceWildCards(hand)
 						local score, hand = self:scoreHand(hand)
-						for i=1,#hand do hand[i] = hand[i].original or hand[i] end	-- replace best-replacement with original wildcards for displaying 
 						if not bestScore or score > bestScore then
 							bestScore = score
 							bestHand = hand
@@ -486,8 +485,10 @@ function Score:__tostring()
 	return self.names[self[1]]..' '..table.concat({table.unpack(self,2)}, '.')
 end
 
--- TODO merge this with replaceWildCards?
 function Game:scoreHand(hand)
+	-- TODO merge replaceWildCards with scoreHand
+	hand = self:replaceWildCards(hand)
+	
 	local byValue = table(hand):sort(function(a,b) return value(a) > value(b) end)
 	local bySuit = table(hand):sort(function(a,b) return a.suit > b.suit end)
 
@@ -508,7 +509,9 @@ function Game:scoreHand(hand)
 
 	local valuesOfPairs = cardPairs:map(function(pair) return value(pair[1]) end)
 
+	-- replace best-replacement with original wildcards for displaying 
 	local sortedHand = table():append(cardPairs:unpack())
+	for i=1,#sortedHand do sortedHand[i] = sortedHand[i].original or sortedHand[i] end	
 	
 	-- five of a kind
 	if #cardPairs[1] == 5 then return Score(10, valuesOfPairs:unpack()), sortedHand end
