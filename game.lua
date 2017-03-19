@@ -19,6 +19,9 @@ function Game:init(args)
 	self.humanPlayers = self.players:filter(HumanPlayer.is)
 	if #self.humanPlayers == 0 then self.humanPlayers = nil end
 	self.up = table()
+	function self.isWild(card)
+		return card.value == 2
+	end
 end
 function Game:play()
 	while #self.players > 1 do 
@@ -34,7 +37,8 @@ function Game:playRound(openingPlayerIndex)
 		player.cards = table()
 	end
 
-print'############################## BEGIN ROUND ##############################'
+print()
+print'#### BEGIN ROUND ####'
 	-- don't reset the pot in case there's something left over from last round (what do you do with those chips anyways?)
 	self.up = table()
 	
@@ -48,6 +52,7 @@ print(players[1]:name()..' is dealer')
 		players:remove(1)
 		if #players == 1 then
 			self:winGame(players[1])
+self:print(players)
 			return	
 		end
 	end
@@ -59,6 +64,7 @@ self:print(players)
 		players:remove(1)
 		if #players == 1 then
 			self:winGame(players[1])	-- win game?
+self:print(players)
 			return	
 		end
 	end
@@ -96,6 +102,7 @@ self:print(players)
 
 		self:predictHands(players)
 
+print()
 print('starting stage '..stage)
 self:print(players)
 		local raiseValue = 0	-- when checking.  this will be overridden for stage==0 when we open.
@@ -169,21 +176,8 @@ print(player:name()..' best hand '..hand:map(tostring):concat' '..' '..tostring(
 			}
 		}
 	end
---print()
---print('#winners: '..#winners)
-	for _,winner in ipairs(winners) do
-		winner.player.chips = winner.player.chips + math.floor(self.pot / #winners)
-print(winner.player:name()..' won')
-	end
-	self.pot = self.pot % #winners
+	self:winGame(winners:map(function(winner) return winner.player end))
 self:print(players)
-
-	for _,player in ipairs(self.players) do player.predictScore = nil end
-
-	if #players == 1 then
-		self:winGame(players[1])
-	end
-
 end
 function Game:print(playersActive)
 	io.write('pot: $',self.pot)
@@ -215,6 +209,88 @@ function Game:dealHands(players)
 		player.cards = range(2):map(function() return self.deck.cards:remove() end)
 	end
 end
+function Game:replaceWildCards(hand)
+	hand = table(hand)
+	local wild = table()
+	for i=#hand,1,-1 do
+		if self.isWild(hand[i]) then
+			wild:insert(hand:remove(i))
+		end
+	end
+	if #wild == 0 then return hand end
+
+	local function value(card) return card.value == 1 and 14 or card.value end
+	local byValue = table(hand):sort(function(a,b) return value(a) > value(b) end)
+	local bySuit = table(hand):sort(function(a,b) return a.suit > b.suit end)
+
+	local flush = #hand:filter(function(card) return card.suit == hand[1].suit end) == 5
+	local straight = #byValue:filter(function(card,i) return value(byValue[1]) == value(card) + i-1 end) == 5
+
+	local ofAKind = table()	-- ex: ofAKind[13] = table of all kings
+	for _,card in ipairs(hand) do
+		ofAKind[card.value] = ofAKind[card.value] or table()
+		ofAKind[card.value]:insert(card)
+	end
+	-- cardPairs[1] is the largest # of any kind
+	-- if two pair then cardPairs[1] is the larger of the two pairs
+	local cardPairs = ofAKind:values():sort(function(a,b) 
+		if #a == #b then return value(a[1]) > value(b[1]) end
+		return #a > #b 
+	end)
+
+	local function setStraight()
+		hand = byValue
+		for i=1,#wild do
+			if hand[1].value < 14 then 
+				hand:insert(1, Card{value=hand[1].value+1, suit=hand[1].suit})
+			else
+				hand:insert(1, Card{value=hand:last().value-1, suit=hand[1].suit})
+			end
+		end
+	end
+
+	local function setPairs()
+		hand:append(wild:map(function() return cardPairs[1][1] end))
+	end
+
+	-- five of a kind
+	if #cardPairs[1] + #wild >= 5 then 
+		setPairs()
+	-- royal flush / straight flush
+	elseif flush and straight then 
+		setStraight()
+	-- four of a kind
+	elseif #cardPairs[1] + #wild == 4 then
+		-- can't be 4 cards and 1 wild or 4 wild and 1 card because that would be a 5-of-a-kind
+		-- must 3+1, 2+2, or 1+2 cards+wild
+		-- in all cases, copy the cardPairs
+		setPairs()
+	-- full house
+	elseif #cardPairs[1] + #cardPairs[2] + #wild == 5 then
+		-- when can wildcards give you a full house and not a four-of-a-kind?
+		-- when you only have 1 wildcard and two-pair
+		assert(#wild == 1)
+		setPairs()
+	-- flush
+	elseif flush and #hand + #wild == 5 then
+		hand:append(wild:map(function() return Card{suit=hand[1].suit, value=14} end))
+	-- straight
+	elseif straight then
+		setStraight()
+	-- three of a kind
+	elseif #cardPairs[1] + #wild == 3 then
+		-- can only happen with high card + 2 wild, or pair + 1 wild
+		setPairs()
+	-- two pair can't appear.  if you have a pair and a wild then it becomes a 3 of a kind
+	-- pair appears when you have high card + 1 wild 
+	elseif #cardPairs[1]  + #wild == 2 then
+		assert(#wild == 1)
+		assert(#cardPairs[1] == 1)
+		setPairs()
+	end
+
+	return hand
+end
 function Game:scoreBestHand(cards)
 	assert(#cards >= 5)
 	local bestScore, bestHand
@@ -225,6 +301,8 @@ function Game:scoreBestHand(cards)
 					for i5=i4+1,#cards do
 						local is = table{i1,i2,i3,i4,i5}
 						local hand = is:map(function(i) return cards[i] end)
+						-- TODO hand now has wildcards replaced.  keep track of the original cards somewhere?
+						hand = self:replaceWildCards(hand)
 						local score, hand = Game:scoreHand(hand)
 						if not bestScore or score > bestScore then
 							bestScore = score
@@ -237,8 +315,14 @@ function Game:scoreBestHand(cards)
 	end
 	return bestScore, bestHand
 end
-function Game:winGame(player)
-	print(player:name()..' won the game with $'..player.chips)
+function Game:winGame(winners)
+	for _,winner in ipairs(winners) do
+		winner.chips = winner.chips + math.floor(self.pot / #winners)
+print(winner:name()..' is a winner')
+	end
+	self.pot = self.pot % #winners
+
+	for _,player in ipairs(self.players) do player.predictScore = nil end
 end
 local Score = class()
 function Score:init(...)
@@ -268,6 +352,7 @@ Score.names = {
 	'full house',
 	'four of a kind',
 	'straight flush',
+	'five of a kind',
 }
 function Score:__tostring()
 	return self.names[self[1]]..' '..table.concat({table.unpack(self,2)}, '.')
@@ -295,7 +380,9 @@ function Game:scoreHand(hand)
 	local valuesOfPairs = cardPairs:map(function(pair) return value(pair[1]) end)
 
 	local sortedHand = table():append(cardPairs:unpack())
-
+	
+	-- five of a kind
+	if #cardPairs[1] == 5 then return Score(10, valuesOfPairs:unpack()), sortedHand end
 	-- royal flush / straight flush
 	if flush and straight then return Score(9, valuesOfPairs:unpack()), sortedHand end	-- can't have a pair so byValue:map(value) == valuesOfPairs
 	-- four of a kind
