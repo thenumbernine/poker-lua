@@ -3,6 +3,7 @@ local table = require 'ext.table'
 local range = require 'ext.range'
 local Player = require 'player'
 local HumanPlayer = require 'humanplayer'
+local Card = require 'cards.card'
 local Deck = require 'cards.deck'
 local Game = class()
 Game.pot = 0
@@ -11,7 +12,7 @@ Game.bigBlind = 10
 Game.openValue = 10
 function Game:init(args)
 	self.deck = Deck():shuffle()
-	self.players = range(args and args.numPlayers or 5):map(function(index)
+	self.players = range(args and args.numPlayers or 2):map(function(index)
 		local playerClass = Player
 		if index == 1 then playerClass = HumanPlayer end
 		return playerClass{game=self, chips=1500, index=index}
@@ -21,6 +22,7 @@ function Game:init(args)
 	self.up = table()
 	function self.isWild(card)
 		return card.value == 2
+			or card.value == 3
 	end
 end
 function Game:play()
@@ -209,6 +211,11 @@ function Game:dealHands(players)
 		player.cards = range(2):map(function() return self.deck.cards:remove() end)
 	end
 end
+local ReplaceCard = class(Card)
+function ReplaceCard:init(args)
+	ReplaceCard.super.init(self, args)
+	self.original = args.original
+end
 function Game:replaceWildCards(hand)
 	hand = table(hand)
 	local wild = table()
@@ -224,7 +231,43 @@ function Game:replaceWildCards(hand)
 	local bySuit = table(hand):sort(function(a,b) return a.suit > b.suit end)
 
 	local flush = #hand:filter(function(card) return card.suit == hand[1].suit end) == 5
-	local straight = #byValue:filter(function(card,i) return value(byValue[1]) == value(card) + i-1 end) == 5
+
+	--local straight = #byValue:filter(function(card,i) return value(byValue[1]) == value(card) + i-1 end) == 5
+-- TODO how to detect intermediately spaced straights?
+-- I can handle sequential
+-- but what of 2 3 5 6 + Joker ? 
+-- first sort by value, then increment along and see if any holes can be filled
+	local straightHand = table()
+	if #byValue > 0 then	 -- if you have 5 wildcards then it's a 5-of-a-kind and won't be a straight
+		local tmpByValue = table(byValue)
+		local tmpWild = table(wild)
+		local value = tmpByValue:last().value
+		straightHand:insert(tmpByValue:remove())
+		for i=1,4 do
+			value = value + 1
+			if value > 14 then
+				if #tmpByValue > 0 then
+					-- if we were counting off a straight and we surpassed 14
+					-- and there are still non-wild cards remaining
+					-- then we must have a pair somewhere
+					-- and can't have a straight
+					straightHand = nil
+					break
+				else
+					straightHand:insert(ReplaceCard{suit=byValue[1].suit, value=straightHand:last().value-1, original=tmpWild:remove()})
+				end
+			elseif #tmpByValue > 0 and tmpByValue:last().value == value then
+				-- found a value card
+				straightHand:insert(1, tmpByValue:remove())
+			elseif #tmpWild > 0 then
+				-- found a wildcard
+				straightHand:insert(1, ReplaceCard{suit=byValue[1].suit, value=value, original=tmpWild:remove()})
+			else
+				straightHand = nil
+				break
+			end
+		end
+	end
 
 	local ofAKind = table()	-- ex: ofAKind[13] = table of all kings
 	for _,card in ipairs(hand) do
@@ -238,52 +281,46 @@ function Game:replaceWildCards(hand)
 		return #a > #b 
 	end)
 
-	local function setStraight()
-		hand = byValue
-		for i=1,#wild do
-			if hand[1].value < 14 then 
-				hand:insert(1, Card{value=hand[1].value+1, suit=hand[1].suit})
-			else
-				hand:insert(1, Card{value=hand:last().value-1, suit=hand[1].suit})
-			end
-		end
-	end
-
 	local function setPairs()
-		hand:append(wild:map(function() return cardPairs[1][1] end))
+		local firstPair = #cardPairs > 0 and cardPairs[1][1]
+		hand:append(wild:map(function(card)
+			return not firstPair 
+				and ReplaceCard{value=14, suit=1, original=card} 
+				or ReplaceCard{value=firstPair.value, suit=firstPair.suit, original=card}
+		end))
 	end
 
 	-- five of a kind
-	if #cardPairs[1] + #wild >= 5 then 
+	if (#cardPairs > 0 and #cardPairs[1] or 0) + #wild >= 5 then 
 		setPairs()
 	-- royal flush / straight flush
-	elseif flush and straight then 
-		setStraight()
+	elseif flush and straightHand then 
+		hand = straightHand
 	-- four of a kind
-	elseif #cardPairs[1] + #wild == 4 then
+	elseif (#cardPairs > 0 and #cardPairs[1] or 0) + #wild == 4 then
 		-- can't be 4 cards and 1 wild or 4 wild and 1 card because that would be a 5-of-a-kind
 		-- must 3+1, 2+2, or 1+2 cards+wild
 		-- in all cases, copy the cardPairs
 		setPairs()
 	-- full house
-	elseif #cardPairs[1] + #cardPairs[2] + #wild == 5 then
+	elseif (#cardPairs > 0 and #cardPairs[1] or 0) + (#cardPairs > 1 and #cardPairs[2] or 0) + #wild == 5 then
 		-- when can wildcards give you a full house and not a four-of-a-kind?
 		-- when you only have 1 wildcard and two-pair
 		assert(#wild == 1)
 		setPairs()
 	-- flush
 	elseif flush and #hand + #wild == 5 then
-		hand:append(wild:map(function() return Card{suit=hand[1].suit, value=14} end))
+		hand:append(wild:map(function(card) return ReplaceCard{suit=hand[1].suit, value=14, original=card} end))
 	-- straight
-	elseif straight then
-		setStraight()
+	elseif straightHand then
+		hand = straightHand
 	-- three of a kind
-	elseif #cardPairs[1] + #wild == 3 then
+	elseif (#cardPairs > 0 and #cardPairs[1] or 0) + #wild == 3 then
 		-- can only happen with high card + 2 wild, or pair + 1 wild
 		setPairs()
 	-- two pair can't appear.  if you have a pair and a wild then it becomes a 3 of a kind
 	-- pair appears when you have high card + 1 wild 
-	elseif #cardPairs[1]  + #wild == 2 then
+	elseif (#cardPairs > 0 and #cardPairs[1] or 0)  + #wild == 2 then
 		assert(#wild == 1)
 		assert(#cardPairs[1] == 1)
 		setPairs()
@@ -304,6 +341,7 @@ function Game:scoreBestHand(cards)
 						-- TODO hand now has wildcards replaced.  keep track of the original cards somewhere?
 						hand = self:replaceWildCards(hand)
 						local score, hand = Game:scoreHand(hand)
+						for i=1,#hand do hand[i] = hand[i].original or hand[i] end	-- replace best-replacement with original wildcards for displaying 
 						if not bestScore or score > bestScore then
 							bestScore = score
 							bestHand = hand
