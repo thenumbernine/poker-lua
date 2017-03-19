@@ -278,7 +278,7 @@ function Game:replaceWildCards(hand)
 				straightHand:insert(1, tmpByValue:remove())
 			elseif #tmpWild > 0 then
 				-- found a wildcard
-				straightHand:insert(1, ReplaceCard{suit=byValue[1].suit, value=v, original=tmpWild:remove()})
+				straightHand:insert(1, ReplaceCard{suit=byValue[1].suit, value=v<14 and v or 1, original=tmpWild:remove()})
 			else
 				straightHand = nil
 				break
@@ -288,8 +288,8 @@ function Game:replaceWildCards(hand)
 
 	local ofAKind = table()	-- ex: ofAKind[13] = table of all kings
 	for _,card in ipairs(hand) do
-		ofAKind[card.value] = ofAKind[card.value] or table()
-		ofAKind[card.value]:insert(card)
+		ofAKind[value(card)] = ofAKind[value(card)] or table()
+		ofAKind[value(card)]:insert(card)
 	end
 	-- cardPairs[1] is the largest # of any kind
 	-- if two pair then cardPairs[1] is the larger of the two pairs
@@ -302,7 +302,7 @@ function Game:replaceWildCards(hand)
 		local firstPair = #cardPairs > 0 and cardPairs[1][1]
 		hand:append(wild:map(function(card)
 			return not firstPair 
-				and ReplaceCard{value=14, suit=1, original=card} 
+				and ReplaceCard{value=1, suit=1, original=card} -- value = 1 means value() == 14.  confusing, I know.
 				or ReplaceCard{value=firstPair.value, suit=firstPair.suit, original=card}
 		end))
 	end
@@ -327,7 +327,7 @@ function Game:replaceWildCards(hand)
 		setPairs()
 	-- flush
 	elseif flush and #hand + #wild == 5 then
-		hand:append(wild:map(function(card) return ReplaceCard{suit=hand[1].suit, value=14, original=card} end))
+		hand:append(wild:map(function(card) return ReplaceCard{suit=hand[1].suit, value=1, original=card} end))	-- value=14
 	-- straight
 	elseif straightHand then
 		hand = straightHand
@@ -432,8 +432,8 @@ function Game:scoreHand(hand)
 
 	local ofAKind = table()	-- ex: ofAKind[13] = table of all kings
 	for _,card in ipairs(hand) do
-		ofAKind[card.value] = ofAKind[card.value] or table()
-		ofAKind[card.value]:insert(card)
+		ofAKind[value(card)] = ofAKind[value(card)] or table()
+		ofAKind[value(card)]:insert(card)
 	end
 	-- cardPairs[1] is the largest # of any kind
 	-- if two pair then cardPairs[1] is the larger of the two pairs
