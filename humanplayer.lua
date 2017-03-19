@@ -14,19 +14,19 @@ function HumanPlayer:callOrRaise(raiseValue, minRaise)
 			print'folding...'
 			return 'fold'
 		elseif cmd == 'r' then
-			print('raise how much?'..(minRaise and (' (min raise '..minRaise..')') or ''))
+			print('raise to how much?'..(minRaise and (' (min raise '..minRaise..')') or ''))
 			io.write'> '
 			io.flush()
 			local amountcmd = io.read'*l'
 			local amount = tonumber(amountcmd)
 			if amount 
 			and (not minRaise or amount > minRaise) 
-			and amount < self.chips
+			and amount <= self.chips
 			then 
 				print('raising by '..amount)
 				return amount 
 			end
-			print("can't raise by "..amountcmd)
+			print("can't raise to "..amountcmd)
 		else
 		print("I don't understand "..cmd)
 		end

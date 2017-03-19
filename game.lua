@@ -42,6 +42,9 @@ function Game:play()
 		end
 		self.players = self.players:filter(function(player) return player.chips > 0 end)
 	end
+	
+	print()
+	print('!!!!!!!!!!!!! '..self.players[1]:name()..' is the winner !!!!!!!!!!!!!')
 end
 
 function Game:playRound(openingPlayerIndex)
@@ -49,6 +52,9 @@ function Game:playRound(openingPlayerIndex)
 	for _,player in ipairs(self.players) do
 		player.cards = table()
 	end
+
+	self.bets = table()
+	-- don't clear the pot in case it has a remainder from the last game
 
 print()
 print'#### BEGIN ROUND ####'
@@ -64,7 +70,10 @@ print(players[1]:name()..' is dealer')
 	while not self:payBlind(players[1], self.smallBlind) do
 		players:remove(1)
 		if #players == 1 then
-			self:winGame(players[1])
+print("no other player can play small blind")
+			local pot = self.pot
+			self.pot = 0
+			self:winRound({players[1]}, pot)
 self:print(players)
 			return	
 		end
@@ -76,7 +85,10 @@ self:print(players)
 	while not self:payBlind(players[1], self.bigBlind) do
 		players:remove(1)
 		if #players == 1 then
-			self:winGame(players[1])	-- win game?
+print("no other player can play big blind")
+			local pot = self.pot
+			self.pot = 0
+			self:winRound({players[1]}, pot)
 self:print(players)
 			return	
 		end
@@ -88,7 +100,9 @@ self:print(players)
 	-- round starts at the player after the blinds.  this is the dealer.
 	-- keep track of the last player to raise.  once it gets back around to him, the round is over.
 	local firstPlayer = players[1]
-	
+
+	self.bets = table()
+
 	for stage=0,3 do
 				
 		-- if stage == 0 then we are continuing off of the open routine above
@@ -112,89 +126,132 @@ self:print(players)
 			self.up:insert(self.deck.cards:remove())
 		end
 
-
 		self:predictHands(players)
-
 print()
 print('starting stage '..stage)
 self:print(players)
-		local raiseValue = 0	-- when checking.  this will be overridden for stage==0 when we open.
 
-		local lastPlayerToRaise = players[1]
+		-- if only 1 player is left then no betting
+		if #players > 1 then
 
-		while true do
-			local player = players[1]
+
+			local raiseValue = 0	-- when checking.  this will be overridden for stage==0 when we open.
+
+			local lastPlayerToRaise = players[1]
+
+			repeat
+				local player = players[1]
 				
-			local newRaiseValue = player.chips < raiseValue 
-				and 'fold' 
-				or player:callOrRaise(raiseValue, raiseValue == 0 and self.openValue or nil)
+				-- side betting
+				if raiseValue > player.chips then
+					
+				end
+				local newRaiseValue = player:callOrRaise(raiseValue, raiseValue == 0 and self.openValue or nil)
 			
-			if newRaiseValue == 'fold' then
-print(player:name()..' folds')
-				if players:remove(1) == firstPlayer then
-print('first player '..firstPlayer:name()..' folded, setting new first player to '..players[1]:name())								
-					firstPlayer = players[1]
+				-- if the player can't make the bid...
+				if newRaiseValue ~= 'fold' and newRaiseValue > player.chips then
+					-- move rest of bidding to a side-bet
+					self.pot = self.pot + player.chips
+					player.chips = 0
+					self.bets:insert{players=table(players), pot=self.pot}
+					self.pot = 0
+					-- and remove the player from further bids
+					newRaiseValue = 'sidebet'
 				end
+				
+				if newRaiseValue == 'fold' or newRaiseValue == 'sidebet' then
+					if newRaiseValue == 'fold' then
+						print(player:name()..' folds')
+					elseif newRaiseValue == 'sidebet' then
+						print(player:name()..' entered into a sidebet')
+					end
+
+					if players:remove(1) == firstPlayer then
+print('first player '..firstPlayer:name()..' is out, setting new first player to '..players[1]:name())
+						firstPlayer = players[1]
+					end
 self:print(players)
-				if #players == 1 then 
-print('all players have folded')						
-					break 
-				end
-			else
-				player.chips = player.chips - newRaiseValue
-				self.pot = self.pot + newRaiseValue
-				local raised = newRaiseValue > raiseValue
-				raiseValue = newRaiseValue
+					if #players == 1 then 
+print('all other players are out')
+						break 
+					end
+				else
+					player.chips = player.chips - newRaiseValue
+					self.pot = self.pot + newRaiseValue
+					local raised = newRaiseValue > raiseValue
+					raiseValue = newRaiseValue
 print(player:name()..' '..(raised and 'raises to '..raiseValue or 'calls'))
 self:print(players)					
-				
-				if raised then
-					lastPlayerToRaise = players[1]
-				end
+					
+					if raised then
+						lastPlayerToRaise = players[1]
+					end
 
-				players:insert(players:remove(1))
-	
-				if not raised then
-					if players[1] == lastPlayerToRaise then
-print'all players have called'					
-						break
+					players:insert(players:remove(1))
+		
+					if not raised then
+						if players[1] == lastPlayerToRaise then
+print'all other players have called'					
+							break
+						end
 					end
 				end
-			end
-			
-			if #players == 1 then break end
-		end
-		if #players == 1 then break end
-	
+			until #players == 1
+		end	
 	end
 
 	assert(#players > 0)
-	
-	local winners
-	if #players > 1 then
 
-		local playerScores = players:map(function(player,i,t)
-			local hand = table(self.up):append(player.cards)
-			local score, hand = self:scoreBestHand(hand)
-			print(player:name()..' best hand '..hand:map(tostring):concat' '..' '..score)
-			return {player=player, score=score, hand=hand},#t+1
-		end)
-		playerScores:sort(function(a,b) return a.score > b.score end)
-		local winningScore = playerScores[1]
-		winners = playerScores:filter(function(a) return a.score == winningScore.score end)
-	else
-		winners = table{
-			{ 
-				player = players[1],
-			}
+	-- resolve all bets	
+	if #players > 1 or self.pot > 0 then
+		self.bets:insert{
+			players = players,
+			pot = self.pot,
 		}
+		players = table()
+		self.pot = 0
 	end
-	self:winGame(winners:map(function(winner) return winner.player end))
-	self:print(players)
+
+	local bets = self.bets
+	self.bets = table()
+	for _,bet in ipairs(bets) do
+		local players = bet.players
+		local pot = bet.pot
+print('resolving bet of $'..pot..' between players '..players:map(function(player) return player:name() end):concat', ')
+
+		local winners
+		if #players > 1 then
+
+			local playerScores = players:map(function(player,i,t)
+				local hand = table(self.up):append(player.cards)
+				local score, hand = self:scoreBestHand(hand)
+				print(player:name()..' best hand '..hand:map(tostring):concat' '..' '..score)
+				return {player=player, score=score, hand=hand},#t+1
+			end)
+			playerScores:sort(function(a,b) return a.score > b.score end)
+			local winningScore = playerScores[1]
+			winners = playerScores:filter(function(a) return a.score == winningScore.score end)
+		else
+			winners = table{
+				{ 
+					player = players[1],
+				}
+			}
+		end
+		self:winRound(winners:map(function(winner) return winner.player end), pot)
+		self:print(players)
+	end
+	
+	for _,player in ipairs(self.players) do player.predictScore = nil end
 end
 
 function Game:print(playersActive)
 	io.write('pot: $',self.pot)
+	for _,sidebet in ipairs(self.bets) do
+		io.write(', (side $',sidebet.pot,' with ',sidebet.players:map(function(player)
+			return player:name()
+		end):concat', ',')')
+	end
 	if #self.up > 0 then io.write(', up: ',self.up:map(tostring):concat' ') end
 	for i,player in ipairs(self.players) do
 		local folded = not playersActive:find(player)
@@ -211,7 +268,7 @@ end
 
 function Game:payBlind(player, blind)
 	if player.chips < blind then 
-		self.pot = self.pot + player,chips 
+		self.pot = self.pot + player.chips 
 		player.chips = 0
 		return false 
 	end
@@ -226,7 +283,7 @@ function Game:dealHands(players)
 	end
 end
 
-
+-- TODO merge replaceWildCards with scoreHand and get rid of ReplaceCards
 local ReplaceCard = class(Card)
 
 function ReplaceCard:init(args)
@@ -335,12 +392,20 @@ function Game:replaceWildCards(hand)
 	elseif (#cardPairs > 0 and #cardPairs[1] or 0) + #wild == 3 then
 		-- can only happen with high card + 2 wild, or pair + 1 wild
 		setPairs()
-	-- two pair can't appear.  if you have a pair and a wild then it becomes a 3 of a kind
+	-- two pair can't appear with wild cards
+	-- if you have a pair and a wild then it becomes a 3 of a kind
+	elseif #wild == 0 
+	and #cardPairs >= 2 
+	and #cardPairs[1] == 2 
+	and #cardPairs[2] == 2 then
 	-- pair appears when you have high card + 1 wild 
 	elseif (#cardPairs > 0 and #cardPairs[1] or 0)  + #wild == 2 then
 		assert(#wild == 1)
 		assert(#cardPairs[1] == 1)
 		setPairs()
+	-- high card can't appear with wild cards
+	else
+		assert(#wild == 0)
 	end
 
 	return hand
@@ -372,14 +437,13 @@ function Game:scoreBestHand(cards)
 	return bestScore, bestHand
 end
 
-function Game:winGame(winners)
+function Game:winRound(winners, pot)
 	for _,winner in ipairs(winners) do
-		winner.chips = winner.chips + math.floor(self.pot / #winners)
+		winner.chips = winner.chips + math.floor(pot / #winners)
 		print(winner:name()..' is a winner')
 	end
-	self.pot = self.pot % #winners
-
-	for _,player in ipairs(self.players) do player.predictScore = nil end
+	-- add whats left back to the main pot
+	self.pot = self.pot + pot % #winners
 end
 
 
@@ -422,7 +486,7 @@ function Score:__tostring()
 	return self.names[self[1]]..' '..table.concat({table.unpack(self,2)}, '.')
 end
 
-
+-- TODO merge this with replaceWildCards?
 function Game:scoreHand(hand)
 	local byValue = table(hand):sort(function(a,b) return value(a) > value(b) end)
 	local bySuit = table(hand):sort(function(a,b) return a.suit > b.suit end)
