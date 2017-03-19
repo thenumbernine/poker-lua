@@ -5,12 +5,14 @@ local HumanPlayer = class(Player)
 function HumanPlayer:callOrRaise(raiseValue, minRaise)
 	while true do
 		print(raiseValue..' to you')
-		print('what would you like to do? [c]all/check, [r]aise, [f]old?')
-		local cmd = io.read'*l'
-		
-		local parts = cmd:trim():split'%s+'
+		io.write('what would you like to do? ([c]all/check), [r]aise, [f]old? ')
+		io.flush()
+
+		local parts = io.read'*l':trim():split'%s+'
 		local cmd = parts:remove(1)
 		cmd = cmd:lower():sub(1,1)
+
+		if cmd == '' then cmd = 'c' end	-- default call/check
 
 		if cmd == 'c' then
 			print'calling...'
@@ -23,8 +25,7 @@ function HumanPlayer:callOrRaise(raiseValue, minRaise)
 			if #parts > 0 then
 				amountcmd = parts:remove(1)
 			else
-				print('raise to how much?'..(minRaise and (' (min raise '..minRaise..')') or ''))
-				io.write'> '
+				io.write('raise to how much?'..(minRaise and (' (min raise '..minRaise..')') or '')..' ')
 				io.flush()
 				amountcmd = io.read'*l'
 			end

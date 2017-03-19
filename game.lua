@@ -37,10 +37,22 @@ end
 
 function Game:play()
 	while #self.players > 1 do 
-		for openingPlayerIndex=1,#self.players do
+		local openingPlayerIndex = 1
+		while openingPlayerIndex <= #self.players do
 			self:playRound(openingPlayerIndex)
+			
+			for j=#self.players,1,-1 do
+				if self.players[j].chips == 0 then
+					self.players:remove(j)
+					if j <= openingPlayerIndex then
+						openingPlayerIndex = openingPlayerIndex - 1
+					end
+				end
+			end
+			if #self.players == 1 then break end
+			
+			openingPlayerIndex = openingPlayerIndex + 1  
 		end
-		self.players = self.players:filter(function(player) return player.chips > 0 end)
 	end
 	
 	print()
@@ -131,6 +143,10 @@ print()
 print('starting stage '..stage)
 self:print(players)
 
+		for _,player in ipairs(self.players) do
+			player.potAtLastBid = self.pot
+		end
+
 		-- if only 1 player is left then no betting
 		if #players > 1 then
 
@@ -142,20 +158,29 @@ self:print(players)
 			repeat
 				local player = players[1]
 				
-				-- side betting
-				if raiseValue > player.chips then
-					
-				end
 				local newRaiseValue = player:callOrRaise(raiseValue, raiseValue == 0 and self.openValue or nil)
-			
-				-- if the player can't make the bid...
-				if newRaiseValue ~= 'fold' and newRaiseValue > player.chips then
+		
+				-- if the player can't make the bid then make a side-bet
+				if newRaiseValue ~= 'fold' and newRaiseValue >= player.chips then
+
+					-- all my betting is wrong.
+					-- i'm raising to amounts, but subtracting as if i'm raising by amounts. 
+					-- if we are going past the player's chips then all previous bets over the player's chips should stay in the pot
+					-- those bets could've been done by players that have since folded, so check all players
+					-- some of those players also could have bet below the current player's chips at teh time of the side-bet ... 
+					--  then does their next bid's money - up to the side bet amount - go into the side bet as well?
+					-- solution: if a player hits their limit, make everyone else go around and raise up to that limit first.  give them the option to fold
+					-- once they all call, then put that aside in a side-bet
+
 					-- move rest of bidding to a side-bet
 					self.pot = self.pot + player.chips
 					player.chips = 0
+
+					-- all added to the pot since the last time this player had bet needs to be kept aside
 					self.bets:insert{players=table(players), pot=self.pot}
 					self.pot = 0
-					-- and remove the player from further bids
+					
+					-- remove the player from further bids
 					newRaiseValue = 'sidebet'
 				end
 				
@@ -178,6 +203,9 @@ print('all other players are out')
 				else
 					player.chips = player.chips - newRaiseValue
 					self.pot = self.pot + newRaiseValue
+
+					player.potAtLastBid = self.pot
+
 					local raised = newRaiseValue > raiseValue
 					raiseValue = newRaiseValue
 print(player:name()..' '..(raised and 'raises to '..raiseValue or 'calls'))
@@ -186,7 +214,7 @@ self:print(players)
 					if raised then
 						lastPlayerToRaise = players[1]
 					end
-
+				
 					players:insert(players:remove(1))
 		
 					if not raised then
@@ -195,6 +223,7 @@ print'all other players have called'
 							break
 						end
 					end
+				
 				end
 			until #players == 1
 		end	
@@ -481,6 +510,21 @@ Score.names = {
 	'five of a kind',
 }
 
+-- from https://en.wikipedia.org/wiki/Poker_probability
+Score.oddsToOne = {
+	['royal flush'] = 649739,
+	['straight flush'] = 72192,
+	['four of a kind'] = 4164,
+	['full house'] = 693,
+	flush = 508,
+	straight = 254,
+	['three of a kind'] = 46.3,
+	['two pair'] = 20,
+	pair = 1.37,
+	['high card'] = .995,
+}
+
+
 function Score:__tostring()
 	return self.names[self[1]]..' '..table.concat({table.unpack(self,2)}, '.')
 end
@@ -545,7 +589,7 @@ function Game:predictHands(players)
 	end
 	for _,player in ipairs(players) do
 		local wins = 0
-		local total = 1000
+		local total = 100
 		for tries=1,total do
 			local deck = Deck(self.deck)
 			local function pickCard() return deck.cards:remove(math.random(#deck.cards)) end
