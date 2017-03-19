@@ -5,11 +5,20 @@ local Player = require 'player'
 local HumanPlayer = require 'humanplayer'
 local Card = require 'cards.card'
 local Deck = require 'cards.deck'
+require 'ext.meta'
+	
+-- card value
+local function value(card) 
+	return card.value == 1 and 14 or card.value 
+end
+
 local Game = class()
+
 Game.pot = 0
 Game.smallBlind = 5
 Game.bigBlind = 10
 Game.openValue = 10
+
 function Game:init(args)
 	self.deck = Deck():shuffle()
 	self.players = range(args and args.numPlayers or 2):map(function(index)
@@ -25,6 +34,7 @@ function Game:init(args)
 			or card.value == 3
 	end
 end
+
 function Game:play()
 	while #self.players > 1 do 
 		for openingPlayerIndex=1,#self.players do
@@ -33,6 +43,7 @@ function Game:play()
 		self.players = self.players:filter(function(player) return player.chips > 0 end)
 	end
 end
+
 function Game:playRound(openingPlayerIndex)
 
 	for _,player in ipairs(self.players) do
@@ -165,7 +176,7 @@ print'all players have called'
 		local playerScores = players:map(function(player,i,t)
 			local hand = table(self.up):append(player.cards)
 			local score, hand = self:scoreBestHand(hand)
-print(player:name()..' best hand '..hand:map(tostring):concat' '..' '..tostring(score))
+			print(player:name()..' best hand '..hand:map(tostring):concat' '..' '..score)
 			return {player=player, score=score, hand=hand},#t+1
 		end)
 		playerScores:sort(function(a,b) return a.score > b.score end)
@@ -179,8 +190,9 @@ print(player:name()..' best hand '..hand:map(tostring):concat' '..' '..tostring(
 		}
 	end
 	self:winGame(winners:map(function(winner) return winner.player end))
-self:print(players)
+	self:print(players)
 end
+
 function Game:print(playersActive)
 	io.write('pot: $',self.pot)
 	if #self.up > 0 then io.write(', up: ',self.up:map(tostring):concat' ') end
@@ -196,6 +208,7 @@ function Game:print(playersActive)
 	end
 	print()
 end
+
 function Game:payBlind(player, blind)
 	if player.chips < blind then 
 		self.pot = self.pot + player,chips 
@@ -206,16 +219,21 @@ function Game:payBlind(player, blind)
 	self.pot = self.pot + blind
 	return true
 end
+
 function Game:dealHands(players)
 	for _,player in ipairs(players) do
 		player.cards = range(2):map(function() return self.deck.cards:remove() end)
 	end
 end
+
+
 local ReplaceCard = class(Card)
+
 function ReplaceCard:init(args)
 	ReplaceCard.super.init(self, args)
 	self.original = args.original
 end
+
 function Game:replaceWildCards(hand)
 	hand = table(hand)
 	local wild = table()
@@ -226,7 +244,6 @@ function Game:replaceWildCards(hand)
 	end
 	if #wild == 0 then return hand end
 
-	local function value(card) return card.value == 1 and 14 or card.value end
 	local byValue = table(hand):sort(function(a,b) return value(a) > value(b) end)
 	local bySuit = table(hand):sort(function(a,b) return a.suit > b.suit end)
 
@@ -241,27 +258,27 @@ function Game:replaceWildCards(hand)
 	if #byValue > 0 then	 -- if you have 5 wildcards then it's a 5-of-a-kind and won't be a straight
 		local tmpByValue = table(byValue)
 		local tmpWild = table(wild)
-		local value = tmpByValue:last().value
+		local v = value(tmpByValue:last())
 		straightHand:insert(tmpByValue:remove())
 		for i=1,4 do
-			value = value + 1
-			if value > 14 then
-				if #tmpByValue > 0 then
+			v = v + 1
+			if v > 14 then
+				if #tmpWild > 0 then
+					straightHand:insert(ReplaceCard{suit=byValue[1].suit, value=value(straightHand:last())-1, original=tmpWild:remove()})
+				else
 					-- if we were counting off a straight and we surpassed 14
 					-- and there are still non-wild cards remaining
 					-- then we must have a pair somewhere
 					-- and can't have a straight
 					straightHand = nil
 					break
-				else
-					straightHand:insert(ReplaceCard{suit=byValue[1].suit, value=straightHand:last().value-1, original=tmpWild:remove()})
 				end
-			elseif #tmpByValue > 0 and tmpByValue:last().value == value then
+			elseif #tmpByValue > 0 and value(tmpByValue:last()) == v then
 				-- found a value card
 				straightHand:insert(1, tmpByValue:remove())
 			elseif #tmpWild > 0 then
 				-- found a wildcard
-				straightHand:insert(1, ReplaceCard{suit=byValue[1].suit, value=value, original=tmpWild:remove()})
+				straightHand:insert(1, ReplaceCard{suit=byValue[1].suit, value=v, original=tmpWild:remove()})
 			else
 				straightHand = nil
 				break
@@ -328,6 +345,7 @@ function Game:replaceWildCards(hand)
 
 	return hand
 end
+
 function Game:scoreBestHand(cards)
 	assert(#cards >= 5)
 	local bestScore, bestHand
@@ -340,7 +358,7 @@ function Game:scoreBestHand(cards)
 						local hand = is:map(function(i) return cards[i] end)
 						-- TODO hand now has wildcards replaced.  keep track of the original cards somewhere?
 						hand = self:replaceWildCards(hand)
-						local score, hand = Game:scoreHand(hand)
+						local score, hand = self:scoreHand(hand)
 						for i=1,#hand do hand[i] = hand[i].original or hand[i] end	-- replace best-replacement with original wildcards for displaying 
 						if not bestScore or score > bestScore then
 							bestScore = score
@@ -353,19 +371,24 @@ function Game:scoreBestHand(cards)
 	end
 	return bestScore, bestHand
 end
+
 function Game:winGame(winners)
 	for _,winner in ipairs(winners) do
 		winner.chips = winner.chips + math.floor(self.pot / #winners)
-print(winner:name()..' is a winner')
+		print(winner:name()..' is a winner')
 	end
 	self.pot = self.pot % #winners
 
 	for _,player in ipairs(self.players) do player.predictScore = nil end
 end
+
+
 local Score = class()
+
 function Score:init(...)
 	for i=1,select('#',...) do self[i] = select(i, ...) end
 end
+
 function Score.__lt(a,b)
 	for i=1,math.min(#a,#b) do
 		if a[i] < b[i] then return true end
@@ -373,6 +396,7 @@ function Score.__lt(a,b)
 	end
 	return false
 end
+
 function Score.__eq(a,b)
 	if #a ~= #b then return false end
 	for i=1,#a do
@@ -380,6 +404,7 @@ function Score.__eq(a,b)
 	end
 	return true
 end
+
 Score.names = {
 	'high card',
 	'pair',
@@ -392,11 +417,13 @@ Score.names = {
 	'straight flush',
 	'five of a kind',
 }
+
 function Score:__tostring()
 	return self.names[self[1]]..' '..table.concat({table.unpack(self,2)}, '.')
 end
+
+
 function Game:scoreHand(hand)
-	local function value(card) return card.value == 1 and 14 or card.value end
 	local byValue = table(hand):sort(function(a,b) return value(a) > value(b) end)
 	local bySuit = table(hand):sort(function(a,b) return a.suit > b.suit end)
 
