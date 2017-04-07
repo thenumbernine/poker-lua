@@ -32,6 +32,10 @@ function Player:callOrRaise(currentBid, minRaise)
 	return currentBid
 end
 
+function Player:callOrFold(currentBid)
+	return currentBid 
+end
+
 function Player:name()
 	return 'player '..self.index
 end

@@ -29,10 +29,7 @@ function Game:init(args)
 	self.humanPlayers = self.players:filter(HumanPlayer.is)
 	if #self.humanPlayers == 0 then self.humanPlayers = nil end
 	self.up = table()
-	function self.isWild(card)
-		return card.value == 2
-			or card.value == 3
-	end
+--	function self.isWild(card) return card.value == 2 or card.value == 3 end
 end
 
 function Game:play()
@@ -166,16 +163,25 @@ self:print(players)
 		
 				-- if the player can't make the bid then make a side-bet
 				if bid ~= 'fold' and playerLoss >= player.chips then
-
-					-- all my betting is wrong.
-					-- i'm raising to amounts, but subtracting as if i'm raising by amounts. 
-					-- if we are going past the player's chips then all previous bets over the player's chips should stay in the pot
-					-- those bets could've been done by players that have since folded, so check all players
-					-- some of those players also could have bet below the current player's chips at teh time of the side-bet ... 
-					--  then does their next bid's money - up to the side bet amount - go into the side bet as well?
-					-- solution: if a player hits their limit, make everyone else go around and raise up to that limit first.  give them the option to fold
-					-- once they all call, then put that aside in a side-bet
-
+					
+					-- enter into a side bet
+					for _,checkPlayer in ipairs(players) do
+						if checkPlayer ~= player then
+							-- what if the other players calling/folding can't afford to?
+							-- they should have a side bet too.
+							if checkPlayer:callOrFold(bid) then
+								local move = bid - checkPlayer.lastBid
+								
+								if move > checkPlayer.chips then print('!!!!!!!!!!!! ut oh !!!!!!!!!!!!') end
+								
+								move = math.min(move, checkPlayer.chips)	-- this hsouldn't happen, and if it does we should do another round of checks
+								checkPlayer.chips = checkPlayer.chips - move
+print('checking '..checkPlayer:name()..' up to '..bid)
+								self.pot = self.pot + move
+							end
+						end
+					end
+					
 					-- move rest of bidding to a side-bet
 					self.pot = self.pot + player.chips
 					player.chips = 0
@@ -183,6 +189,10 @@ self:print(players)
 					-- all added to the pot since the last time this player had bet needs to be kept aside
 					self.bets:insert{players=table(players), pot=self.pot}
 					self.pot = 0
+
+					for _,player in ipairs(self.players) do
+						player.lastBid = 0
+					end
 					
 					-- remove the player from further bids
 					bid = 'sidebet'
@@ -294,6 +304,10 @@ function Game:print(playersActive)
 				#player.cards > 0 
 					and (not self.humanPlayers or self.humanPlayers:find(player))
 					and (' '..player.cards:map(tostring):concat' ') or '',
+				not self.humanPlayers
+					and player.predictScore 
+					and self.humanPlayers:find(player)
+					and ' '..(math.floor(player.predictScore*10000)/100)..'%' or '',
 				folded and ' folded' or '')
 		end
 	end
@@ -328,7 +342,7 @@ function Game:replaceWildCards(hand)
 	hand = table(hand)
 	local wild = table()
 	for i=#hand,1,-1 do
-		if self.isWild(hand[i]) then
+		if self.isWild and self.isWild(hand[i]) then
 			wild:insert(hand:remove(i))
 		end
 	end
@@ -590,23 +604,62 @@ function Game:predictHands(players)
 		print()
 	end
 	for _,player in ipairs(players) do
-		local wins = 0
-		local total = 100
-		for tries=1,total do
-			local deck = Deck(self.deck)
-			local function pickCard() return deck.cards:remove(math.random(#deck.cards)) end
-			local up = table(self.up)
-			while #up < 5 do up:insert(pickCard()) end	-- guess what cards will come up 
-			local otherCards = table{pickCard(), pickCard()}
+
+--[[
+		if #self.up >= 4 then
+			local deck = Deck()
+			local selfCards = table(self.up):append(player.cards)
+			for _,card in ipairs(selfCards) do deck.cards:removeObject(card) end
 			
-			local score, hand = self:scoreBestHand(table(player.cards):append(up))
-			local otherScore, otherHand = self:scoreBestHand(table(otherCards):append(up))
-		
-			if score > otherScore then
-				wins = wins + 1
+			local wins = 0
+			local total = 0
+			
+			local is = range(7 - #self.up)
+			local done
+			repeat
+				local cards = is:map(function(i) return deck.cards[i] end)
+			
+				local score = self:scoreBestHand(table(selfCards):append(cards:sub(1,7-#selfCards)))
+				
+				local otherScore = self:scoreBestHand(table(self.up):append(cards))
+				if score > otherScore then
+					wins = wins + 1
+				end
+				total = total + 1
+			
+				for i=#is,1,-1 do
+					is[i] = is[i] + 1
+					for j=i+1,#is do is[j] = is[i] + j-i end
+					if is[i] <= #deck.cards - (#is-i) then break end
+					if i == 1 then 
+						done = true
+						break
+					end
+				end
+			until done
+			player.predictScore = wins / total
+		else
+--]] do			
+			local wins = 0
+			local total = 1000
+			for tries=1,total do
+				local deck = Deck(self.deck)	-- TODO remove the cards already up or in player's hand
+				for _,card in ipairs(player.cards) do deck.cards:removeObject(card) end
+				local function pickCard() return deck.cards:remove(math.random(#deck.cards)) end
+				local up = table(self.up)
+				while #up < 5 do up:insert(pickCard()) end	-- guess what cards will come up 
+				local otherCards = table{pickCard(), pickCard()}
+				
+				local score, hand = self:scoreBestHand(table(player.cards):append(up))
+				local otherScore, otherHand = self:scoreBestHand(table(otherCards):append(up))
+			
+				if score > otherScore then
+					wins = wins + 1
+				end
 			end
+			
+			player.predictScore = wins / total
 		end
-		player.predictScore = wins / total
 		if not self.humanPlayers then
 			print(player:name()..' predicts his hand to be '..player.predictScore)
 		end
