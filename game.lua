@@ -70,7 +70,7 @@ print'#### BEGIN ROUND ####'
 	-- don't reset the pot in case there's something left over from last round (what do you do with those chips anyways?)
 	self.up = table()
 	
-	local players = range(#self.players):map(function(i)
+	local players = self.players:mapi(function(_,i)
 		return self.players[(openingPlayerIndex+i-1)%#self.players+1]
 	end)
 
