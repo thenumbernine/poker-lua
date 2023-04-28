@@ -26,7 +26,7 @@ function Game:init(args)
 		if index == 1 then playerClass = HumanPlayer end
 		return playerClass{game=self, chips=1500, index=index}
 	end)
-	self.humanPlayers = self.players:filter(HumanPlayer.is)
+	self.humanPlayers = self.players:filter(function(x) return HumanPlayer:isa(x) end)
 	if #self.humanPlayers == 0 then self.humanPlayers = nil end
 	self.up = table()
 --	function self.isWild(card) return card.value == 2 or card.value == 3 end
